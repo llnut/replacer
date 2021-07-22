@@ -1,0 +1,14 @@
+[package]
+name = "my-replacer"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.8.2", features = ["fs", "io-util", "macros", "rt-multi-thread", "sync"] }
+bytes = "1.0.1"
+rand = "0.8.4"
+toml = "0.5.8"
+serde = "1.0.126"
+serde_derive = "1.0.126"

@@ -1,0 +1,10 @@
+pat = "https://img.aaa.com/"
+
+to = [
+    ["https://img1.a.com/", 20],
+    ["https://img2.a.com/", 20],
+    ["https://img3.a.com/", 20],
+    ["https://img4.a.com/", 20],
+    ["https://img5.a.com/", 20],
+]
+
