@@ -1,9 +1,10 @@
 use bytes::BytesMut;
 use rand::Rng;
 use serde_derive::Deserialize;
+use std::collections::HashMap;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug, Deserialize)]
 struct Config {
@@ -18,10 +19,15 @@ struct RepStr {
     w_r: u8,
 }
 
-pub async fn read_chunk(path: String, tx: mpsc::Sender<String>) {
+pub async fn read_chunk(
+    path: String,
+    tx: mpsc::Sender<String>,
+    l_tx: oneshot::Sender<HashMap<String, u64>>,
+) {
     //替换过程的配置
     let pat: String;
     let rep_str: Vec<RepStr>;
+    let mut rep_log: HashMap<String, u64>;
     match File::open("Config.toml").await {
         Ok(mut config) => {
             let mut conf_buf: Vec<u8> = Vec::new();
@@ -33,6 +39,7 @@ pub async fn read_chunk(path: String, tx: mpsc::Sender<String>) {
             let rep_conf = build_rep_conf(conf_buf);
             pat = rep_conf.0;
             rep_str = rep_conf.1;
+            rep_log = rep_conf.2;
         }
         Err(_) => {
             println!("未找到 Config.toml");
@@ -42,7 +49,7 @@ pub async fn read_chunk(path: String, tx: mpsc::Sender<String>) {
 
     //要替换的源文件
     let mut file = File::open(path).await.unwrap();
-    let mut buf = BytesMut::with_capacity(8 * 1024);
+    let mut buf = BytesMut::with_capacity(16 * 1024);
     let mut n: usize;
     let mut chunk_tail: String = "".to_string();
     let mut chunk: String;
@@ -86,6 +93,9 @@ pub async fn read_chunk(path: String, tx: mpsc::Sender<String>) {
                         if chunk == chunk_tmp {
                             break 'outer;
                         } else {
+                            if let Some(n) = rep_log.get_mut(&rep.s) {
+                                *n = *n + 1;
+                            }
                             chunk = chunk_tmp;
                         }
                     }
@@ -94,11 +104,13 @@ pub async fn read_chunk(path: String, tx: mpsc::Sender<String>) {
         }
         tx.send(chunk.clone()).await.unwrap();
     }
+    l_tx.send(rep_log).unwrap();
 }
 
-fn build_rep_conf(v: Vec<u8>) -> (String, Vec<RepStr>) {
+fn build_rep_conf(v: Vec<u8>) -> (String, Vec<RepStr>, HashMap<String, u64>) {
     let config: Config = toml::from_slice(&v[..]).unwrap();
     let mut to: Vec<RepStr> = Vec::new();
+    let mut rep_log: HashMap<String, u64> = HashMap::new();
     let mut w_pos: u8 = 1;
 
     if let None = config.pat {
@@ -112,6 +124,7 @@ fn build_rep_conf(v: Vec<u8>) -> (String, Vec<RepStr>) {
                 w_l: w_pos,
                 w_r: w_pos + w - 1,
             });
+            rep_log.insert(s.to_string(), 0);
             w_pos += w;
         }
         if w_pos != 101 {
@@ -119,5 +132,5 @@ fn build_rep_conf(v: Vec<u8>) -> (String, Vec<RepStr>) {
             std::process::exit(64);
         }
     }
-    (config.pat.unwrap(), to)
+    (config.pat.unwrap(), to, rep_log)
 }

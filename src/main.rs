@@ -1,4 +1,6 @@
 use clap::{App, Arg};
+use std::collections::HashMap;
+use std::time::Instant;
 use tokio::sync::{mpsc, oneshot};
 
 mod read;
@@ -22,15 +24,30 @@ async fn main() {
         println!("未指定源文件路径");
         std::process::exit(64);
     });
-
-    let (tx, rx) = mpsc::channel::<String>(8 * 1024);
+    let now = Instant::now();
+    let (tx, rx) = mpsc::channel::<String>(32 * 1024);
     let (f_tx, f_rx) = oneshot::channel::<String>();
-    let read = tokio::spawn(read::read_chunk(path.to_string(), tx));
+    let (l_tx, l_rx) = oneshot::channel::<HashMap<String, u64>>();
+    let read = tokio::spawn(read::read_chunk(path.to_string(), tx, l_tx));
     let write = tokio::spawn(write::write_chunk(rx, f_tx));
 
     read.await.unwrap();
     match f_rx.await {
-        Ok(v) => println!("替换成功，新文件为: {:?}", v),
+        Ok(v) => match l_rx.await {
+            Ok(log) => {
+                println!(
+                    "替换成功，共耗时:{:?}秒\n新文件为: {:?}\n替换日志:\n{:?}",
+                    now.elapsed().as_secs(),
+                    v,
+                    log
+                )
+            }
+            Err(_) => println!(
+                "替换成功, 共耗时:{:?}\n新文件为: {:?}",
+                now.elapsed().as_secs(),
+                v
+            ),
+        },
         Err(_) => println!("替换失败"),
     }
     write.await.unwrap();
