@@ -5,7 +5,7 @@ use std::env;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug, Deserialize)]
 struct Config {
@@ -52,6 +52,7 @@ async fn main() {
     }
 
     let (tx, mut rx) = mpsc::channel::<String>(8 * 1024);
+    let (f_tx, f_rx) = oneshot::channel::<String>();
 
     let read = tokio::spawn(async move {
         //替换过程的配置
@@ -137,15 +138,19 @@ async fn main() {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_millis();
-        let mut w_file = File::create("r_".to_string() + &now.to_string())
-            .await
-            .unwrap();
+        let f_name: String = ("r_".to_string() + &now.to_string()).into();
+        let mut w_file = File::create(f_name.clone()).await.unwrap();
         while let Some(chunk) = rx.recv().await {
             //println!("recv chunk:\n{:?}\n", chunk);
             w_file.write(chunk.as_bytes()).await.unwrap();
         }
+        f_tx.send(f_name).unwrap();
     });
 
     read.await.unwrap();
+    match f_rx.await {
+        Ok(v) => println!("替换成功，新文件为: {:?}", v),
+        Err(_) => println!("替换失败"),
+    }
     write.await.unwrap();
 }

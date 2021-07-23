@@ -1,5 +1,5 @@
 [package]
-name = "my-replacer"
+name = "replacer"
 version = "0.1.0"
 edition = "2018"
 
